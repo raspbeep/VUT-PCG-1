@@ -28,8 +28,15 @@ struct Particles
   /********************************************************************************************************************/
   /*                             TODO: Particle data structure optimized for use on GPU                               */
   /********************************************************************************************************************/
+  float* position_x;
+  float* position_y;
+  float* position_z;
+  
+  float* velocity_x;
+  float* velocity_y;
+  float* velocity_z;
 
-
+  float* mass;
 };
 
 /**
