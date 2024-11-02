@@ -16,6 +16,7 @@
 #include <device_launch_parameters.h>
 
 #include "nbody.cuh"
+#include <cfloat>
 
 /* Constants */
 constexpr float G                  = 6.67384e-11f;
@@ -33,8 +34,69 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
   /********************************************************************************************************************/
   /*  TODO: CUDA kernel to calculate new particles velocity and position, use shared memory to minimize memory access */
   /********************************************************************************************************************/
+  extern __shared__ float sharedMem[];
 
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= N)
+    return;
+
+  float newVelX{};
+  float newVelY{};
+  float newVelZ{};
+
+  const float posX = pIn.position_x[idx];
+  const float posY = pIn.position_y[idx];
+  const float posZ = pIn.position_z[idx];
   
+  const float velX = pIn.velocity_x[idx];
+  const float velY = pIn.velocity_y[idx];
+  const float velZ = pIn.velocity_z[idx];
+
+  const float weight = pIn.mass[idx];
+
+
+  for (int tile = 0; tile < gridDim.x; tile++) {
+    int tileIdx = tile * blockDim.x + threadIdx.x;
+
+    sharedMem[threadIdx.x * 7] = pIn.position_x[tileIdx];
+    sharedMem[threadIdx.x * 7 + 1] = pIn.position_y[tileIdx];
+    sharedMem[threadIdx.x * 7 + 2] = pIn.position_z[tileIdx];
+    sharedMem[threadIdx.x * 7 + 3] = pIn.velocity_x[tileIdx];
+    sharedMem[threadIdx.x * 7 + 4] = pIn.velocity_y[tileIdx];
+    sharedMem[threadIdx.x * 7 + 5] = pIn.velocity_z[tileIdx];
+    sharedMem[threadIdx.x * 7 + 6] = pIn.mass[tileIdx];
+
+    __syncthreads();
+
+    for (int i = 0; i < blockDim.x; i++) {
+      const float dx = posX - sharedMem[i * 7];
+      const float dy = posY - sharedMem[i * 7 + 1];
+      const float dz = posZ - sharedMem[i * 7 + 2];
+
+      const float r2 = dx * dx + dy * dy + dz * dz;
+      const float r = sqrtf(r2);
+      const float r3 = r2 * r;
+
+      // Calculate gravitation velocity
+      const float F = G * weight * sharedMem[i * 7 + 6] / (r3 + FLT_MIN);
+      if (r > COLLISION_DISTANCE) {
+        newVelX += dx * F;
+        newVelY += dy * F;
+        newVelZ += dz * F;
+      } else
+      // Calculate collision velocity
+      if (r > 0.f && r < COLLISION_DISTANCE)
+      {
+        int invWeightSum = 1 / (weight + sharedMem[i * 7 + 6]);
+        newVelX += 2.f * sharedMem[i * 7 + 6] * (sharedMem[i * 7 + 3] - velX) * invWeightSum;
+        newVelY += 2.f * sharedMem[i * 7 + 6] * (sharedMem[i * 7 + 4] - velY) * invWeightSum;
+        newVelZ += 2.f * sharedMem[i * 7 + 6] * (sharedMem[i * 7 + 5] - velZ) * invWeightSum;
+      }
+    }
+    __syncthreads();
+
+    
+  }
 }// end of calculate_gravitation_velocity
 //----------------------------------------------------------------------------------------------------------------------
 

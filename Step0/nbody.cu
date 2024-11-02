@@ -62,12 +62,14 @@ __global__ void calculateGravitationVelocity(Particles p, Velocities tmpVel, con
 
     const float r2 = dx * dx + dy * dy + dz * dz;
     const float r = sqrtf(r2);
+    const float r3 = r2 * r;
 
-    const float F = G * weight * otherWeight / (r2 + FLT_MIN);
-
-    newVelX += (r > COLLISION_DISTANCE) ? dx / r * F : 0.f;
-    newVelY += (r > COLLISION_DISTANCE) ? dy / r * F : 0.f;
-    newVelZ += (r > COLLISION_DISTANCE) ? dz / r * F : 0.f;
+    const float F = G * weight * otherWeight / (r3 + FLT_MIN);
+    if (r > COLLISION_DISTANCE) {
+      newVelX += dx * F;
+      newVelY += dy * F;
+      newVelZ += dz * F;
+    }
   }
   newVelX *= dt / weight;
   newVelY *= dt / weight;
@@ -101,23 +103,23 @@ __global__ void calculateCollisionVelocity(Particles p, Velocities tmpVel, const
   const float velX    = p.velocity_x[idx];
   const float velY    = p.velocity_y[idx];
   const float velZ    = p.velocity_z[idx];
-  const float mass    = p.mass[idx];
+  const float weight  = p.mass[idx];
 
-  float newVelX{};
-  float newVelY{};
-  float newVelZ{};
+  float newVelX = tmpVel.velocity_x[idx];
+  float newVelY = tmpVel.velocity_y[idx];
+  float newVelZ = tmpVel.velocity_z[idx];
 
   for (unsigned i = 0; i < N; i++)
   {
     if (i == idx)
       continue;
-    const float otherPosX = p.position_x[i];
-    const float otherPosY = p.position_y[i];
-    const float otherPosZ = p.position_z[i];
-    const float otherVelX = p.velocity_x[i];
-    const float otherVelY = p.velocity_y[i];
-    const float otherVelZ = p.velocity_z[i];
-    const float otherMass = p.mass[i];
+    const float otherPosX   = p.position_x[i];
+    const float otherPosY   = p.position_y[i];
+    const float otherPosZ   = p.position_z[i];
+    const float otherVelX   = p.velocity_x[i];
+    const float otherVelY   = p.velocity_y[i];
+    const float otherVelZ   = p.velocity_z[i];
+    const float otherWeight = p.mass[i];
 
     const float dx = otherPosX - posX;
     const float dy = otherPosY - posY;
@@ -128,20 +130,15 @@ __global__ void calculateCollisionVelocity(Particles p, Velocities tmpVel, const
 
     if (r > 0.f && r < COLLISION_DISTANCE)
     {
-      newVelX += (r > 0.f && r < COLLISION_DISTANCE)
-                 ? (((mass * velX - otherMass * velX + 2.f * otherMass * otherVelX) / (mass + otherMass)) - velX)
-                 : 0.f;
-      newVelY += (r > 0.f && r < COLLISION_DISTANCE)
-                 ? (((mass * velY - otherMass * velY + 2.f * otherMass * otherVelY) / (mass + otherMass)) - velY)
-                 : 0.f;
-      newVelZ += (r > 0.f && r < COLLISION_DISTANCE)
-                 ? (((mass * velZ - otherMass * velZ + 2.f * otherMass * otherVelZ) / (mass + otherMass)) - velZ)
-                 : 0.f;
+      int invWeightSum = 1 / (weight + otherWeight);
+      newVelX += 2.f * otherWeight * (otherVelX - velX) * invWeightSum;
+      newVelY += 2.f * otherWeight * (otherVelY - velY) * invWeightSum;
+      newVelZ += 2.f * otherWeight * (otherVelZ - velZ) * invWeightSum;
     }
   }
-  tmpVel.velocity_x[idx] += newVelX;
-  tmpVel.velocity_y[idx] += newVelY;
-  tmpVel.velocity_z[idx] += newVelZ;
+  tmpVel.velocity_x[idx] = newVelX;
+  tmpVel.velocity_y[idx] = newVelY;
+  tmpVel.velocity_z[idx] = newVelZ;
 }// end of calculate_collision_velocity
 //----------------------------------------------------------------------------------------------------------------------
 

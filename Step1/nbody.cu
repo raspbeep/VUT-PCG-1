@@ -50,7 +50,7 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
   const float velZ   = pIn.velocity_z[idx];
 
   const float weight = pIn.mass[idx];
-  
+
   for (unsigned i = 0; i < N; i++)
   {
     if (i == idx)
@@ -66,31 +66,37 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
     
     const float otherWeight = pIn.mass[i];
 
-    const float dx = otherPosX - posX;
-    const float dy = otherPosY - posY;
-    const float dz = otherPosZ - posZ;
+    const float dx = posX - otherPosX;
+    const float dy = posY - otherPosY;
+    const float dz = posZ - otherPosZ;
 
     const float r2 = dx * dx + dy * dy + dz * dz;
     const float r = sqrtf(r2);
 
     // Calculate gravitation velocity
-    const float F = G * weight * otherWeight / (r2 + FLT_MIN);
-    newVelX += (r > COLLISION_DISTANCE) ? dx / r * F : 0.f;
-    newVelY += (r > COLLISION_DISTANCE) ? dy / r * F : 0.f;
-    newVelZ += (r > COLLISION_DISTANCE) ? dz / r * F : 0.f;
-
+    if (r > COLLISION_DISTANCE)
+    {
+    const float r3 = r2 * r;
+    const float F = G * weight * otherWeight / (r3 + FLT_MIN);
+      newVelX += dx * F;
+      newVelY += dy * F;
+      newVelZ += dz * F;
+    } else
     // Calculate collision velocity
     if (r > 0.f && r < COLLISION_DISTANCE)
     {
-      newVelX += (((weight * velX - otherWeight * velX + 2.f * otherWeight * otherVelX) / (weight + otherWeight)) - velX);
-      newVelY += (((weight * velY - otherWeight * velY + 2.f * otherWeight * otherVelY) / (weight + otherWeight)) - velY);
-      newVelZ += (((weight * velZ - otherWeight * velZ + 2.f * otherWeight * otherVelZ) / (weight + otherWeight)) - velZ);
+      int invWeightSum = 1 / (weight + otherWeight);
+      newVelX += 2.f * otherWeight * (otherVelX - velX) * invWeightSum;
+      newVelY += 2.f * otherWeight * (otherVelY - velY) * invWeightSum;
+      newVelZ += 2.f * otherWeight * (otherVelZ - velZ) * invWeightSum;
     }
   }
 
-  newVelX *= dt / weight;
-  newVelY *= dt / weight;
-  newVelZ *= dt / weight;
+  int s = dt / weight;
+
+  newVelX *= s;
+  newVelY *= s;
+  newVelZ *= s;
 
   pOut.velocity_x[idx] = newVelX;
   pOut.velocity_y[idx] = newVelY;
@@ -105,9 +111,6 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
   pOut.position_y[idx] = posYUpdated;
   pOut.position_z[idx] = posZUpdated;
 
-  pOut.velocity_x[idx] += newVelX;
-  pOut.velocity_y[idx] += newVelY;
-  pOut.velocity_z[idx] += newVelZ;
 }// end of calculate_gravitation_velocity
 //----------------------------------------------------------------------------------------------------------------------
 
