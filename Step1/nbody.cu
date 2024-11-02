@@ -41,13 +41,13 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
   float newVelY{};
   float newVelZ{};
 
-  const float posX   = pIn.position_x[idx];
-  const float posY   = pIn.position_y[idx];
-  const float posZ   = pIn.position_z[idx];
+  const float posX = pIn.position_x[idx];
+  const float posY = pIn.position_y[idx];
+  const float posZ = pIn.position_z[idx];
   
-  const float velX   = pIn.velocity_x[idx];
-  const float velY   = pIn.velocity_y[idx];
-  const float velZ   = pIn.velocity_z[idx];
+  const float velX = pIn.velocity_x[idx];
+  const float velY = pIn.velocity_y[idx];
+  const float velZ = pIn.velocity_z[idx];
 
   const float weight = pIn.mass[idx];
 
@@ -77,7 +77,7 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
     if (r > COLLISION_DISTANCE)
     {
     const float r3 = r2 * r;
-    const float F = G * weight * otherWeight / (r3 + FLT_MIN);
+    const float F = G * dt * otherWeight / (r3 + FLT_MIN);
       newVelX += dx * F;
       newVelY += dy * F;
       newVelZ += dz * F;
@@ -92,24 +92,13 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
     }
   }
 
-  int s = dt / weight;
-
-  newVelX *= s;
-  newVelY *= s;
-  newVelZ *= s;
-
   pOut.velocity_x[idx] = newVelX;
   pOut.velocity_y[idx] = newVelY;
   pOut.velocity_z[idx] = newVelZ;
 
-  // Update particle positions and velocities
-  float posXUpdated = posX + (velX + newVelX) * dt;
-  float posYUpdated = posY + (velY + newVelY) * dt;
-  float posZUpdated = posZ + (velZ + newVelZ) * dt;
-
-  pOut.position_x[idx] = posXUpdated;
-  pOut.position_y[idx] = posYUpdated;
-  pOut.position_z[idx] = posZUpdated;
+  pOut.position_x[idx] = posX + (velX + newVelX) * dt;
+  pOut.position_y[idx] = posY + (velY + newVelY) * dt;
+  pOut.position_z[idx] = posZ + (velZ + newVelZ) * dt;
 
 }// end of calculate_gravitation_velocity
 //----------------------------------------------------------------------------------------------------------------------
