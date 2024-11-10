@@ -26,6 +26,11 @@
 #define VEL_Z blockDim.x * 5
 #define MASS  blockDim.x * 6
 
+#define RED_POS_X blockDim.x * 0
+#define RED_POS_Y blockDim.x * 1
+#define RED_POS_Z blockDim.x * 2
+#define RED_MASS  blockDim.x * 3
+
 /* Constants */
 constexpr float G                  = 6.67384e-11f;
 constexpr float COLLISION_DISTANCE = 0.01f;
@@ -39,7 +44,7 @@ constexpr float COLLISION_DISTANCE = 0.01f;
  */
 __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned N, float dt)
 {
-    extern __shared__ float sharedMem[];
+  extern __shared__ float sharedMem[];
 
   const unsigned globalIdx = blockIdx.x * blockDim.x + threadIdx.x;
   
@@ -130,50 +135,100 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
  */
 __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned N)
 {
-  /********************************************************************************************************************/
-  /*           TODO: CUDA kernel to calculate particles center of mass, see reference CPU implementation,             */
-  /*                                 use CUDA predefined warpSize variable                                            */
-  /********************************************************************************************************************/
-    extern __shared__ float4 sdata[];
-    int tdx = threadIdx.x;
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    extern __shared__ float sharedData[];
+    int idx = threadIdx.x;
 
-    // Initialize shared memory with zero for position and mass
-    sdata[tdx] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    float sumX = 0.0f;
+    float sumY = 0.0f;
+    float sumZ = 0.0f;
+    float sumW = 0.0f;
 
-    // Each thread loads a particle and computes a partial COM contribution
-    if (idx < N) {
-        const float posX = p.position_x[idx];
-        const float posY = p.position_y[idx];
-        const float posZ = p.position_z[idx];
-        const float w = p.mass[idx];
+    // Process particles in strided fashion
+    int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
+    while (i < N) {
+        // First particle
+        float mass_ratio = 0.0f;
+        if (sumW + p.mass[i] > 0.0f) {
+            mass_ratio = p.mass[i] / (sumW + p.mass[i]);
+        }
         
-        sdata[tdx].x = posX * w;
-        sdata[tdx].y = posY * w;
-        sdata[tdx].z = posZ * w;
-        sdata[tdx].w = w;
+        float dx = p.position_x[i] - sumX;
+        float dy = p.position_y[i] - sumY;
+        float dz = p.position_z[i] - sumZ;
+        
+        sumX += dx * mass_ratio;
+        sumY += dy * mass_ratio;
+        sumZ += dz * mass_ratio;
+        sumW += p.mass[i];
+
+        // Second particle (stride)
+        if (i + blockDim.x < N) {
+            mass_ratio = 0.0f;
+            if (sumW + p.mass[i + blockDim.x] > 0.0f) {
+                mass_ratio = p.mass[i + blockDim.x] / (sumW + p.mass[i + blockDim.x]);
+            }
+            
+            float dx = p.position_x[i + blockDim.x] - sumX;
+            float dy = p.position_y[i + blockDim.x] - sumY;
+            float dz = p.position_z[i + blockDim.x] - sumZ;
+            
+            sumX += dx * mass_ratio;
+            sumY += dy * mass_ratio;
+            sumZ += dz * mass_ratio;
+            sumW += p.mass[i + blockDim.x];
+        }
+        
+        i += blockDim.x * 2 * gridDim.x;
     }
 
+    // Store in shared memory
+    sharedData[RED_POS_X + idx] = sumX;
+    sharedData[RED_POS_Y + idx] = sumY;
+    sharedData[RED_POS_Z + idx] = sumZ;
+    sharedData[RED_MASS  + idx] = sumW;
     __syncthreads();
 
-
+    // Parallel reduction in shared memory
     for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (tdx < stride) {
-            sdata[tdx].x += sdata[tdx + stride].x;
-            sdata[tdx].y += sdata[tdx + stride].y;
-            sdata[tdx].z += sdata[tdx + stride].z;
-            sdata[tdx].w += sdata[tdx + stride].w;
+        if (idx < stride) {
+            float mass_ratio = 0.0f;
+            float total_mass = sharedData[RED_MASS + idx] + sharedData[RED_MASS + idx + stride];
+            if (total_mass > 0.0f) {
+                mass_ratio = sharedData[RED_MASS + idx + stride] / total_mass;
+            }
+
+            float dx = sharedData[RED_POS_X + idx + stride] - sharedData[RED_POS_X + idx];
+            float dy = sharedData[RED_POS_Y + idx + stride] - sharedData[RED_POS_Y + idx];
+            float dz = sharedData[RED_POS_Z + idx + stride] - sharedData[RED_POS_Z + idx];
+
+            sharedData[RED_POS_X + idx] += dx * mass_ratio;
+            sharedData[RED_POS_Y + idx] += dy * mass_ratio;
+            sharedData[RED_POS_Z + idx] += dz * mass_ratio;
+            sharedData[RED_MASS  + idx] += sharedData[RED_MASS + idx + stride];
         }
         __syncthreads();
     }
 
-    // Store the result of this block in global memory
-    if (tdx == 0) {
-        partialCOMs[blockIdx.x] = sdata[0];
-    }
-  
+    // Write results to global memory
+    if (idx == 0) {
+        while (atomicCAS(lock, 0, 1) != 0);
+        float mass_ratio = 0.0f;
+        float total_mass = com->w + sharedData[RED_MASS];
+        if (total_mass > 0.0f) {
+            mass_ratio = sharedData[RED_MASS] / total_mass;
+        }
 
-}// end of centerOfMass
+        float dx = sharedData[RED_POS_X] - com->x;
+        float dy = sharedData[RED_POS_Y] - com->y;
+        float dz = sharedData[RED_POS_Z] - com->z;
+
+        com->x += dx * mass_ratio;
+        com->y += dy * mass_ratio;
+        com->z += dz * mass_ratio;
+        com->w += sharedData[RED_MASS];
+        atomicExch(lock, 0);
+    }
+}
 //----------------------------------------------------------------------------------------------------------------------
 
 /**

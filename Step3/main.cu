@@ -207,7 +207,7 @@ int main(int argc, char **argv)
   /*                                  TODO: Set dynamic shared memory computation                                     */
   /********************************************************************************************************************/
   const std::size_t sharedMemSize    = simBlockDim * sizeof(float) * 7;
-  const std::size_t redSharedMemSize = (simBlockDim / warpSize) * sizeof(float) * 4;   // you can use warpSize variable
+  const std::size_t redSharedMemSize = (simBlockDim /* warpSize*/) * sizeof(float) * 4;   // you can use warpSize variable
 
   // Start measurement
   const auto start = std::chrono::steady_clock::now();
