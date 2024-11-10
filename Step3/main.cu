@@ -228,7 +228,7 @@ int main(int argc, char **argv)
   /********************************************************************************************************************/
   /*                                 TODO: Invocation of center of mass kernel                                        */
   /********************************************************************************************************************/
-  centerOfMass<<<redGridDim, redBlockDim>>>(dParticles[resIdx], dCenterOfMass, dLock, N);
+  centerOfMass<<<redGridDim, redBlockDim, redSharedMemSize>>>(dParticles[resIdx], dCenterOfMass, dLock, N);
 
   // Wait for all CUDA kernels to finish
   CUDA_CALL(cudaDeviceSynchronize());

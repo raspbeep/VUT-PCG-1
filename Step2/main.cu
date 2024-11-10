@@ -171,16 +171,15 @@ int main(int argc, char **argv)
 
   CUDA_CALL(cudaMemcpy(dParticles[0].mass, hParticles.mass, allocSize, cudaMemcpyHostToDevice));
 
-  // can be copied in device
-  CUDA_CALL(cudaMemcpy(dParticles[1].position_x, dParticles[0].position_x, allocSize, cudaMemcpyDeviceToDevice));
-  CUDA_CALL(cudaMemcpy(dParticles[1].position_y, dParticles[0].position_y, allocSize, cudaMemcpyDeviceToDevice));
-  CUDA_CALL(cudaMemcpy(dParticles[1].position_z, dParticles[0].position_z, allocSize, cudaMemcpyDeviceToDevice));
+  CUDA_CALL(cudaMemcpy(dParticles[1].position_x, hParticles.position_x, allocSize, cudaMemcpyHostToDevice));
+  CUDA_CALL(cudaMemcpy(dParticles[1].position_y, hParticles.position_y, allocSize, cudaMemcpyHostToDevice));
+  CUDA_CALL(cudaMemcpy(dParticles[1].position_z, hParticles.position_z, allocSize, cudaMemcpyHostToDevice));
 
-  CUDA_CALL(cudaMemcpy(dParticles[1].velocity_x, dParticles[0].velocity_x, allocSize, cudaMemcpyDeviceToDevice));
-  CUDA_CALL(cudaMemcpy(dParticles[1].velocity_y, dParticles[0].velocity_y, allocSize, cudaMemcpyDeviceToDevice));
-  CUDA_CALL(cudaMemcpy(dParticles[1].velocity_z, dParticles[0].velocity_z, allocSize, cudaMemcpyDeviceToDevice));
+  CUDA_CALL(cudaMemcpy(dParticles[1].velocity_x, hParticles.velocity_x, allocSize, cudaMemcpyHostToDevice));
+  CUDA_CALL(cudaMemcpy(dParticles[1].velocity_y, hParticles.velocity_y, allocSize, cudaMemcpyHostToDevice));
+  CUDA_CALL(cudaMemcpy(dParticles[1].velocity_z, hParticles.velocity_z, allocSize, cudaMemcpyHostToDevice));
 
-  CUDA_CALL(cudaMemcpy(dParticles[1].mass, dParticles[0].mass, allocSize, cudaMemcpyDeviceToDevice));
+  CUDA_CALL(cudaMemcpy(dParticles[1].mass, hParticles.mass, allocSize, cudaMemcpyHostToDevice));
 
   /********************************************************************************************************************/
   /*                                  TODO: Set dynamic shared memory computation                                     */

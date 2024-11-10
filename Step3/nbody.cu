@@ -39,99 +39,85 @@ constexpr float COLLISION_DISTANCE = 0.01f;
  */
 __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned N, float dt)
 {
-  /********************************************************************************************************************/
-  /*  TODO: CUDA kernel to calculate new particles velocity and position, use shared memory to minimize memory access */
-  /********************************************************************************************************************/
-  extern __shared__ float sharedMem[];
+    extern __shared__ float sharedMem[];
 
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  const unsigned globalIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  
+  // Early exit if thread is out of bounds
+  // if (globalIdx >= N) return;
 
-  float newVelX{};
-  float newVelY{};
-  float newVelZ{};
+  float newVelX_grav = 0.0f, newVelY_grav = 0.0f, newVelZ_grav = 0.0f;
+  float newVelX_coll = 0.0f, newVelY_coll = 0.0f, newVelZ_coll = 0.0f;
 
-  unsigned int nThreads = gridDim.x * blockDim.x;
+  const float posX   = pIn.position_x[globalIdx];
+  const float posY   = pIn.position_y[globalIdx];
+  const float posZ   = pIn.position_z[globalIdx];
+  const float velX   = pIn.velocity_x[globalIdx];
+  const float velY   = pIn.velocity_y[globalIdx];
+  const float velZ   = pIn.velocity_z[globalIdx];
+  const float weight = pIn.mass[globalIdx];
 
-  // iterate over all chunks of particles
-  for (unsigned int gridIdx = 0; gridIdx < ceil(float(N) / nThreads); gridIdx++) {
-    newVelX = 0.0f;
-    newVelY = 0.0f;
-    newVelZ = 0.0f;
+  for (unsigned int tile = 0; tile < (N + blockDim.x - 1) / blockDim.x; tile++) {
+    unsigned int tileOffset = tile * blockDim.x;
+    unsigned int threadOffset = tileOffset + threadIdx.x;
 
-    unsigned int globalIdx = (gridIdx * nThreads) + (blockIdx.x * blockDim.x + threadIdx.x);
-
-    const float posX   = globalIdx < N ? pIn.position_x[idx] : 0.f;
-    const float posY   = globalIdx < N ? pIn.position_y[idx] : 0.f;
-    const float posZ   = globalIdx < N ? pIn.position_z[idx] : 0.f;
-    const float velX   = globalIdx < N ? pIn.velocity_x[idx] : 0.f;
-    const float velY   = globalIdx < N ? pIn.velocity_y[idx] : 0.f;
-    const float velZ   = globalIdx < N ? pIn.velocity_z[idx] : 0.f;
-    const float weight = globalIdx < N ? pIn.mass[idx] : 0.f;
-
-    // iterate over all tiles
-    for (unsigned int tile = 0; tile < ceil(float(N) / blockDim.x); tile++) {
-      unsigned int tileOffset = tile * blockDim.x;
-      unsigned int threadOffset = tileOffset + threadIdx.x;
-
-      // all threads load data into shared memory
-      sharedMem[POS_X + threadIdx.x] = threadOffset < N ? pIn.position_x[threadOffset] : 0.f;
-      sharedMem[POS_Y + threadIdx.x] = threadOffset < N ? pIn.position_y[threadOffset] : 0.f;
-      sharedMem[POS_Z + threadIdx.x] = threadOffset < N ? pIn.position_z[threadOffset] : 0.f;
-      sharedMem[VEL_X + threadIdx.x] = threadOffset < N ? pIn.velocity_x[threadOffset] : 0.f;
-      sharedMem[VEL_Y + threadIdx.x] = threadOffset < N ? pIn.velocity_y[threadOffset] : 0.f;
-      sharedMem[VEL_Z + threadIdx.x] = threadOffset < N ? pIn.velocity_z[threadOffset] : 0.f;
-      sharedMem[MASS + threadIdx.x] = threadOffset < N ? pIn.mass[threadOffset] : 0.f;
-
-      __syncthreads();
+    if (threadOffset < N) {
+      sharedMem[POS_X + threadIdx.x] = pIn.position_x[threadOffset];
+      sharedMem[POS_Y + threadIdx.x] = pIn.position_y[threadOffset];
+      sharedMem[POS_Z + threadIdx.x] = pIn.position_z[threadOffset];
+      sharedMem[VEL_X + threadIdx.x] = pIn.velocity_x[threadOffset];
+      sharedMem[VEL_Y + threadIdx.x] = pIn.velocity_y[threadOffset];
+      sharedMem[VEL_Z + threadIdx.x] = pIn.velocity_z[threadOffset];
+      sharedMem[MASS  + threadIdx.x] = pIn.mass[threadOffset];
+    }
+    __syncthreads();
+    
+    for (int j = 0; j < blockDim.x; j++) {
+      if (tileOffset + j >= N) break;
       
-      // iterate over all particles in the tile
-      for (int j = 0; j < blockDim.x; j++) {
-        const float otherPosX   = sharedMem[POS_X + j];
-        const float otherPosY   = sharedMem[POS_Y + j];
-        const float otherPosZ   = sharedMem[POS_Z + j];
-        const float otherVelX   = sharedMem[VEL_X + j];
-        const float otherVelY   = sharedMem[VEL_Y + j];
-        const float otherVelZ   = sharedMem[VEL_Z + j];
-        const float otherWeight = sharedMem[MASS  + j];
+      const float otherPosX   = sharedMem[POS_X + j];
+      const float otherPosY   = sharedMem[POS_Y + j];
+      const float otherPosZ   = sharedMem[POS_Z + j];
+      const float otherVelX   = sharedMem[VEL_X + j];
+      const float otherVelY   = sharedMem[VEL_Y + j];
+      const float otherVelZ   = sharedMem[VEL_Z + j];
+      const float otherWeight = sharedMem[MASS  + j];
 
-        const float dx = posX - otherPosX;
-        const float dy = posY - otherPosY;
-        const float dz = posZ - otherPosZ;
+      const float dx = otherPosX - posX;
+      const float dy = otherPosY - posY;
+      const float dz = otherPosZ - posZ;
 
-        const float r2 = dx * dx + dy * dy + dz * dz;
-        const float r = sqrtf(r2);
+      const float r2 = dx * dx + dy * dy + dz * dz;
+      const float r = sqrtf(r2);
 
-        // Calculate gravitation velocity
-        if (r > COLLISION_DISTANCE)
-        {
+      if (r > COLLISION_DISTANCE) {
           const float r3 = r2 * r;
-          const float F = G * dt * otherWeight / (r3 + FLT_MIN);
-          newVelX += dx * F;
-          newVelY += dy * F;
-          newVelZ += dz * F;
-        } else
-        // Calculate collision velocity
-        if (r > 0.f && r < COLLISION_DISTANCE)
-        {
-          int invWeightSum = 1.f / (weight + otherWeight);
-          newVelX += 2.f * otherWeight * (otherPosX - velX) * invWeightSum;
-          newVelY += 2.f * otherWeight * (otherPosY - velY) * invWeightSum;
-          newVelZ += 2.f * otherWeight * (otherPosZ - velZ) * invWeightSum;
-        }
+          const float F = G * otherWeight / (r3 + FLT_MIN);
+          newVelX_grav += dx * F;
+          newVelY_grav += dy * F;
+          newVelZ_grav += dz * F;
+      } 
+      else if (r > 0.f && r < COLLISION_DISTANCE) {
+          const float invWeightSum = 1.0f / (weight + otherWeight);
+          newVelX_coll += 2.f * otherWeight * (otherVelX - velX) * invWeightSum;
+          newVelY_coll += 2.f * otherWeight * (otherVelY - velY) * invWeightSum;
+          newVelZ_coll += 2.f * otherWeight * (otherVelZ - velZ) * invWeightSum;
       }
-      
-      __syncthreads(); 
     }
-    if (globalIdx < N) {
-      pOut.velocity_x[idx] = newVelX;
-      pOut.velocity_y[idx] = newVelY;
-      pOut.velocity_z[idx] = newVelZ;
-
-      pOut.position_x[idx] = posX + (velX + newVelX) * dt;
-      pOut.position_y[idx] = posY + (velY + newVelY) * dt;
-      pOut.position_z[idx] = posZ + (velZ + newVelZ) * dt;
-    }
+    __syncthreads();
   }
+
+  const float updatedVelX = velX + (newVelX_grav * dt) + newVelX_coll;
+  const float updatedVelY = velY + (newVelY_grav * dt) + newVelY_coll;
+  const float updatedVelZ = velZ + (newVelZ_grav * dt) + newVelZ_coll;
+
+  pOut.position_x[globalIdx] = posX + updatedVelX * dt;
+  pOut.position_y[globalIdx] = posY + updatedVelY * dt;
+  pOut.position_z[globalIdx] = posZ + updatedVelZ * dt;
+
+  pOut.velocity_x[globalIdx] = updatedVelX;
+  pOut.velocity_y[globalIdx] = updatedVelY;
+  pOut.velocity_z[globalIdx] = updatedVelZ;
 }// end of calculate_gravitation_velocity
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -148,6 +134,43 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
   /*           TODO: CUDA kernel to calculate particles center of mass, see reference CPU implementation,             */
   /*                                 use CUDA predefined warpSize variable                                            */
   /********************************************************************************************************************/
+    extern __shared__ float4 sdata[];
+    int tdx = threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Initialize shared memory with zero for position and mass
+    sdata[tdx] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    // Each thread loads a particle and computes a partial COM contribution
+    if (idx < N) {
+        const float posX = p.position_x[idx];
+        const float posY = p.position_y[idx];
+        const float posZ = p.position_z[idx];
+        const float w = p.mass[idx];
+        
+        sdata[tdx].x = posX * w;
+        sdata[tdx].y = posY * w;
+        sdata[tdx].z = posZ * w;
+        sdata[tdx].w = w;
+    }
+
+    __syncthreads();
+
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tdx < stride) {
+            sdata[tdx].x += sdata[tdx + stride].x;
+            sdata[tdx].y += sdata[tdx + stride].y;
+            sdata[tdx].z += sdata[tdx + stride].z;
+            sdata[tdx].w += sdata[tdx + stride].w;
+        }
+        __syncthreads();
+    }
+
+    // Store the result of this block in global memory
+    if (tdx == 0) {
+        partialCOMs[blockIdx.x] = sdata[0];
+    }
   
 
 }// end of centerOfMass
