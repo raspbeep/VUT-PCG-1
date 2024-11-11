@@ -193,7 +193,7 @@ int main(int argc, char **argv)
   /*                                     TODO: Clear GPU center of mass                                               */
   /********************************************************************************************************************/
   
-  CUDA_CALL(cudaMemset(dCenterOfMass, 0, sizeof(float4)));
+  CUDA_CALL(cudaMemset(dCenterOfMass, 0, sizeof(float) * 4));
   CUDA_CALL(cudaMemset(dLock, 0, sizeof(int)));
 
   // Get CUDA device warp size
@@ -253,7 +253,7 @@ int main(int argc, char **argv)
 
   CUDA_CALL(cudaMemcpy(hParticles.mass, dParticles[resIdx].mass, allocSize, cudaMemcpyDeviceToHost));
 
-  CUDA_CALL(cudaMemcpy(hCenterOfMass, dCenterOfMass, sizeof(float4), cudaMemcpyDeviceToHost));
+  CUDA_CALL(cudaMemcpy(hCenterOfMass, dCenterOfMass, sizeof(float) * 4, cudaMemcpyDeviceToHost));
 
   // Compute reference center of mass on CPU
   const float4 refCenterOfMass = centerOfMassRef(md);

@@ -135,99 +135,83 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
  */
 __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned N)
 {
-    extern __shared__ float sharedData[];
-    int idx = threadIdx.x;
+  extern __shared__ float sharedData[];
+  int idx = threadIdx.x;
 
-    float sumX = 0.0f;
-    float sumY = 0.0f;
-    float sumZ = 0.0f;
-    float sumW = 0.0f;
+  float sumX = 0.0f;
+  float sumY = 0.0f;
+  float sumZ = 0.0f;
+  float sumW = 0.0f;
 
-    // Process particles in strided fashion
-    int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
-    while (i < N) {
-        // First particle
-        float mass_ratio = 0.0f;
-        if (sumW + p.mass[i] > 0.0f) {
-            mass_ratio = p.mass[i] / (sumW + p.mass[i]);
-        }
-        
-        float dx = p.position_x[i] - sumX;
-        float dy = p.position_y[i] - sumY;
-        float dz = p.position_z[i] - sumZ;
-        
-        sumX += dx * mass_ratio;
-        sumY += dy * mass_ratio;
-        sumZ += dz * mass_ratio;
-        sumW += p.mass[i];
+  for (int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x; i < N; i += blockDim.x * 2 * gridDim.x) {
+      // first particle
+      float mass_ratio = p.mass[i] / (sumW + p.mass[i]);
+      
+      float dx = p.position_x[i] - sumX;
+      float dy = p.position_y[i] - sumY;
+      float dz = p.position_z[i] - sumZ;
+      
+      sumX += dx * mass_ratio;
+      sumY += dy * mass_ratio;
+      sumZ += dz * mass_ratio;
+      sumW += p.mass[i];
 
-        // Second particle (stride)
-        if (i + blockDim.x < N) {
-            mass_ratio = 0.0f;
-            if (sumW + p.mass[i + blockDim.x] > 0.0f) {
-                mass_ratio = p.mass[i + blockDim.x] / (sumW + p.mass[i + blockDim.x]);
-            }
-            
-            float dx = p.position_x[i + blockDim.x] - sumX;
-            float dy = p.position_y[i + blockDim.x] - sumY;
-            float dz = p.position_z[i + blockDim.x] - sumZ;
-            
-            sumX += dx * mass_ratio;
-            sumY += dy * mass_ratio;
-            sumZ += dz * mass_ratio;
-            sumW += p.mass[i + blockDim.x];
-        }
-        
-        i += blockDim.x * 2 * gridDim.x;
-    }
+      // second particle
+      if (i + blockDim.x < N) {
+          mass_ratio = p.mass[i + blockDim.x] / (sumW + p.mass[i + blockDim.x]);
+          
+          float dx = p.position_x[i + blockDim.x] - sumX;
+          float dy = p.position_y[i + blockDim.x] - sumY;
+          float dz = p.position_z[i + blockDim.x] - sumZ;
+          
+          sumX += dx * mass_ratio;
+          sumY += dy * mass_ratio;
+          sumZ += dz * mass_ratio;
+          sumW += p.mass[i + blockDim.x];
+      }
+  }
 
-    // Store in shared memory
-    sharedData[RED_POS_X + idx] = sumX;
-    sharedData[RED_POS_Y + idx] = sumY;
-    sharedData[RED_POS_Z + idx] = sumZ;
-    sharedData[RED_MASS  + idx] = sumW;
-    __syncthreads();
+  // Store in shared memory
+  sharedData[RED_POS_X + idx] = sumX;
+  sharedData[RED_POS_Y + idx] = sumY;
+  sharedData[RED_POS_Z + idx] = sumZ;
+  sharedData[RED_MASS  + idx] = sumW;
+  __syncthreads();
 
-    // Parallel reduction in shared memory
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (idx < stride) {
-            float mass_ratio = 0.0f;
-            float total_mass = sharedData[RED_MASS + idx] + sharedData[RED_MASS + idx + stride];
-            if (total_mass > 0.0f) {
-                mass_ratio = sharedData[RED_MASS + idx + stride] / total_mass;
-            }
+  // Parallel reduction in shared memory
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (idx < stride) {
+          const float mass1 = sharedData[RED_MASS + idx];
+          const float mass2 = sharedData[RED_MASS + idx + stride];
+          const float mass_ratio_red = mass2 / (mass1 + mass2);
 
-            float dx = sharedData[RED_POS_X + idx + stride] - sharedData[RED_POS_X + idx];
-            float dy = sharedData[RED_POS_Y + idx + stride] - sharedData[RED_POS_Y + idx];
-            float dz = sharedData[RED_POS_Z + idx + stride] - sharedData[RED_POS_Z + idx];
+          float dx = sharedData[RED_POS_X + idx + stride] - sharedData[RED_POS_X + idx];
+          float dy = sharedData[RED_POS_Y + idx + stride] - sharedData[RED_POS_Y + idx];
+          float dz = sharedData[RED_POS_Z + idx + stride] - sharedData[RED_POS_Z + idx];
 
-            sharedData[RED_POS_X + idx] += dx * mass_ratio;
-            sharedData[RED_POS_Y + idx] += dy * mass_ratio;
-            sharedData[RED_POS_Z + idx] += dz * mass_ratio;
-            sharedData[RED_MASS  + idx] += sharedData[RED_MASS + idx + stride];
-        }
-        __syncthreads();
-    }
+          sharedData[RED_POS_X + idx] += dx * mass_ratio_red;
+          sharedData[RED_POS_Y + idx] += dy * mass_ratio_red;
+          sharedData[RED_POS_Z + idx] += dz * mass_ratio_red;
+          sharedData[RED_MASS  + idx] += mass2;
+      }
+      __syncthreads();
+  }
 
-    // Write results to global memory
-    if (idx == 0) {
-        while (atomicCAS(lock, 0, 1) != 0);
-        float mass_ratio = 0.0f;
-        float total_mass = com->w + sharedData[RED_MASS];
-        if (total_mass > 0.0f) {
-            mass_ratio = sharedData[RED_MASS] / total_mass;
-        }
+  // Write results to global memory
+  if (idx == 0) {
+      while (atomicCAS(lock, 0, 1) != 0);
+      float mass_ratio = sharedData[RED_MASS] / (com->w + sharedData[RED_MASS]);
 
-        float dx = sharedData[RED_POS_X] - com->x;
-        float dy = sharedData[RED_POS_Y] - com->y;
-        float dz = sharedData[RED_POS_Z] - com->z;
+      float dx = sharedData[RED_POS_X] - com->x;
+      float dy = sharedData[RED_POS_Y] - com->y;
+      float dz = sharedData[RED_POS_Z] - com->z;
 
-        com->x += dx * mass_ratio;
-        com->y += dy * mass_ratio;
-        com->z += dz * mass_ratio;
-        com->w += sharedData[RED_MASS];
-        atomicExch(lock, 0);
-    }
+      com->x += dx * mass_ratio;
+      com->y += dy * mass_ratio;
+      com->z += dz * mass_ratio;
+      com->w += sharedData[RED_MASS];
+      atomicExch(lock, 0);
+  }
 }
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -246,15 +230,13 @@ __host__ float4 centerOfMassRef(MemDesc& memDesc)
     const float  w   = memDesc.getWeight(i);
 
     // Calculate the vector on the line connecting current body and most recent position of center-of-mass
-    // Calculate weight ratio only if at least one particle isn't massless
+    // Calculate weight ratio
     const float4 d = {pos.x - com.x,
                       pos.y - com.y,
                       pos.z - com.z,
-                      ((memDesc.getWeight(i) + com.w) > 0.0f)
-                        ? ( memDesc.getWeight(i) / (memDesc.getWeight(i) + com.w))
-                        : 0.0f};
+                      memDesc.getWeight(i) / (memDesc.getWeight(i) + com.w)};
 
-    // Update position and weight of the center-of-mass according to the weight ration and vector
+    // Update position and weight of the center-of-mass according to the weight ratio and vector
     com.x += d.x * d.w;
     com.y += d.y * d.w;
     com.z += d.z * d.w;
