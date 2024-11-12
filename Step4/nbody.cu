@@ -135,7 +135,7 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
  */
 __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned N)
 {
-    extern __shared__ float sharedData[];
+  extern __shared__ float sharedData[];
   int idx = threadIdx.x;
 
   float sumX = 0.0f;
@@ -145,8 +145,11 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
 
   for (int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x; i < N; i += blockDim.x * 2 * gridDim.x) {
       // first particle
-      float mass_ratio = p.mass[i] / (sumW + p.mass[i]);
-      
+      float mass_ratio = 0.0f;
+      if (sumW + p.mass[i] > 0.0f) {
+          mass_ratio = p.mass[i] / (sumW + p.mass[i]);
+      }
+            
       float dx = p.position_x[i] - sumX;
       float dy = p.position_y[i] - sumY;
       float dz = p.position_z[i] - sumZ;
@@ -158,7 +161,10 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
 
       // second particle
       if (i + blockDim.x < N) {
-          mass_ratio = p.mass[i + blockDim.x] / (sumW + p.mass[i + blockDim.x]);
+          float mass_ratio = 0.0f;
+          if (sumW + p.mass[i + blockDim.x] > 0.0f) {
+              mass_ratio = p.mass[i + blockDim.x] / (sumW + p.mass[i + blockDim.x]);
+          }
           
           float dx = p.position_x[i + blockDim.x] - sumX;
           float dy = p.position_y[i + blockDim.x] - sumY;
@@ -183,7 +189,10 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
       if (idx < stride) {
           const float mass1 = sharedData[RED_MASS + idx];
           const float mass2 = sharedData[RED_MASS + idx + stride];
-          const float mass_ratio_red = mass2 / (mass1 + mass2);
+          float mass_ratio_red;
+          if (mass1 + mass2 > 0.0f) {
+                mass_ratio_red = sharedData[RED_MASS + idx + stride] / (mass1 + mass2);
+          }
 
           float dx = sharedData[RED_POS_X + idx + stride] - sharedData[RED_POS_X + idx];
           float dy = sharedData[RED_POS_Y + idx + stride] - sharedData[RED_POS_Y + idx];
@@ -200,7 +209,11 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
   // Write results to global memory
   if (idx == 0) {
       while (atomicCAS(lock, 0, 1) != 0);
-      float mass_ratio = sharedData[RED_MASS] / (com->w + sharedData[RED_MASS]);
+      float mass_ratio = 0.0f;
+      float total_mass = com->w + sharedData[RED_MASS];
+        if (total_mass > 0.0f) {
+            mass_ratio = sharedData[RED_MASS] / total_mass;
+        }
 
       float dx = sharedData[RED_POS_X] - com->x;
       float dy = sharedData[RED_POS_Y] - com->y;
