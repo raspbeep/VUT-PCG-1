@@ -15,8 +15,9 @@
 
 #include <device_launch_parameters.h>
 
-#include "nbody.cuh"
 #include <cfloat>
+
+#include "nbody.cuh"
 
 #define POS_X blockDim.x * 0
 #define POS_Y blockDim.x * 1
@@ -24,10 +25,10 @@
 #define VEL_X blockDim.x * 3
 #define VEL_Y blockDim.x * 4
 #define VEL_Z blockDim.x * 5
-#define MASS  blockDim.x * 6
+#define MASS blockDim.x * 6
 
 /* Constants */
-constexpr float G                  = 6.67384e-11f;
+constexpr float G = 6.67384e-11f;
 constexpr float COLLISION_DISTANCE = 0.01f;
 
 /**
@@ -37,24 +38,23 @@ constexpr float COLLISION_DISTANCE = 0.01f;
  * @param N    - Number of particles
  * @param dt   - Size of the time step
  */
-__global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned N, float dt)
-{
+__global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned N, float dt) {
   extern __shared__ float sharedMem[];
 
   const unsigned globalIdx = blockIdx.x * blockDim.x + threadIdx.x;
-  
+
   // Early exit if thread is out of bounds
   // if (globalIdx >= N) return;
 
   float newVelX_grav = 0.0f, newVelY_grav = 0.0f, newVelZ_grav = 0.0f;
   float newVelX_coll = 0.0f, newVelY_coll = 0.0f, newVelZ_coll = 0.0f;
 
-  const float posX   = pIn.position_x[globalIdx];
-  const float posY   = pIn.position_y[globalIdx];
-  const float posZ   = pIn.position_z[globalIdx];
-  const float velX   = pIn.velocity_x[globalIdx];
-  const float velY   = pIn.velocity_y[globalIdx];
-  const float velZ   = pIn.velocity_z[globalIdx];
+  const float posX = pIn.position_x[globalIdx];
+  const float posY = pIn.position_y[globalIdx];
+  const float posZ = pIn.position_z[globalIdx];
+  const float velX = pIn.velocity_x[globalIdx];
+  const float velY = pIn.velocity_y[globalIdx];
+  const float velZ = pIn.velocity_z[globalIdx];
   const float weight = pIn.mass[globalIdx];
 
   for (unsigned int tile = 0; tile < (N + blockDim.x - 1) / blockDim.x; tile++) {
@@ -68,20 +68,20 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
       sharedMem[VEL_X + threadIdx.x] = pIn.velocity_x[threadOffset];
       sharedMem[VEL_Y + threadIdx.x] = pIn.velocity_y[threadOffset];
       sharedMem[VEL_Z + threadIdx.x] = pIn.velocity_z[threadOffset];
-      sharedMem[MASS  + threadIdx.x] = pIn.mass[threadOffset];
+      sharedMem[MASS + threadIdx.x] = pIn.mass[threadOffset];
     }
     __syncthreads();
-    
+
     for (int j = 0; j < blockDim.x; j++) {
       if (tileOffset + j >= N) break;
-      
-      const float otherPosX   = sharedMem[POS_X + j];
-      const float otherPosY   = sharedMem[POS_Y + j];
-      const float otherPosZ   = sharedMem[POS_Z + j];
-      const float otherVelX   = sharedMem[VEL_X + j];
-      const float otherVelY   = sharedMem[VEL_Y + j];
-      const float otherVelZ   = sharedMem[VEL_Z + j];
-      const float otherWeight = sharedMem[MASS  + j];
+
+      const float otherPosX = sharedMem[POS_X + j];
+      const float otherPosY = sharedMem[POS_Y + j];
+      const float otherPosZ = sharedMem[POS_Z + j];
+      const float otherVelX = sharedMem[VEL_X + j];
+      const float otherVelY = sharedMem[VEL_Y + j];
+      const float otherVelZ = sharedMem[VEL_Z + j];
+      const float otherWeight = sharedMem[MASS + j];
 
       const float dx = otherPosX - posX;
       const float dy = otherPosY - posY;
@@ -91,17 +91,16 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
       const float r = sqrtf(r2);
 
       if (r > COLLISION_DISTANCE) {
-          const float r3 = r2 * r;
-          const float F = G * otherWeight / (r3 + FLT_MIN);
-          newVelX_grav += dx * F;
-          newVelY_grav += dy * F;
-          newVelZ_grav += dz * F;
-      } 
-      else if (r > 0.f && r < COLLISION_DISTANCE) {
-          const float invWeightSum = 1.0f / (weight + otherWeight);
-          newVelX_coll += 2.f * otherWeight * (otherVelX - velX) * invWeightSum;
-          newVelY_coll += 2.f * otherWeight * (otherVelY - velY) * invWeightSum;
-          newVelZ_coll += 2.f * otherWeight * (otherVelZ - velZ) * invWeightSum;
+        const float r3 = r2 * r;
+        const float F = G * otherWeight / (r3 + FLT_MIN);
+        newVelX_grav += dx * F;
+        newVelY_grav += dy * F;
+        newVelZ_grav += dz * F;
+      } else if (r > 0.f && r < COLLISION_DISTANCE) {
+        const float invWeightSum = 1.0f / (weight + otherWeight);
+        newVelX_coll += 2.f * otherWeight * (otherVelX - velX) * invWeightSum;
+        newVelY_coll += 2.f * otherWeight * (otherVelY - velY) * invWeightSum;
+        newVelZ_coll += 2.f * otherWeight * (otherVelZ - velZ) * invWeightSum;
       }
     }
     __syncthreads();
@@ -128,10 +127,9 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
  * @param lock - pointer to a user-implemented lock
  * @param N    - Number of particles
  */
-__global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned N)
-{
+__global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned N) {
 
-}// end of centerOfMass
+}  // end of centerOfMass
 //----------------------------------------------------------------------------------------------------------------------
 
 /**
@@ -139,23 +137,19 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
  * @param particles - All particles in the system
  * @param N         - Number of particles
  */
-__host__ float4 centerOfMassRef(MemDesc& memDesc)
-{
+__host__ float4 centerOfMassRef(MemDesc& memDesc) {
   float4 com{};
 
-  for (std::size_t i{}; i < memDesc.getDataSize(); i++)
-  {
+  for (std::size_t i{}; i < memDesc.getDataSize(); i++) {
     const float3 pos = {memDesc.getPosX(i), memDesc.getPosY(i), memDesc.getPosZ(i)};
-    const float  w   = memDesc.getWeight(i);
+    const float w = memDesc.getWeight(i);
 
-    // Calculate the vector on the line connecting current body and most recent position of center-of-mass
-    // Calculate weight ratio only if at least one particle isn't massless
-    const float4 d = {pos.x - com.x,
-                      pos.y - com.y,
-                      pos.z - com.z,
+    // Calculate the vector on the line connecting current body and most recent position of
+    // center-of-mass Calculate weight ratio only if at least one particle isn't massless
+    const float4 d = {pos.x - com.x, pos.y - com.y, pos.z - com.z,
                       ((memDesc.getWeight(i) + com.w) > 0.0f)
-                        ? ( memDesc.getWeight(i) / (memDesc.getWeight(i) + com.w))
-                        : 0.0f};
+                          ? (memDesc.getWeight(i) / (memDesc.getWeight(i) + com.w))
+                          : 0.0f};
 
     // Update position and weight of the center-of-mass according to the weight ration and vector
     com.x += d.x * d.w;
@@ -165,5 +159,5 @@ __host__ float4 centerOfMassRef(MemDesc& memDesc)
   }
 
   return com;
-}// enf of centerOfMassRef
+}  // enf of centerOfMassRef
 //----------------------------------------------------------------------------------------------------------------------

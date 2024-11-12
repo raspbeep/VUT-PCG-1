@@ -23,12 +23,11 @@
 /**
  * Particles data structure
  */
-struct Particles
-{
+struct Particles {
   float* position_x;
   float* position_y;
   float* position_z;
-  
+
   float* velocity_x;
   float* velocity_y;
   float* velocity_z;
@@ -43,10 +42,7 @@ struct Particles
  * @param N    - Number of particles
  * @param dt   - Size of the time step
  */
-__global__ void calculateVelocity(Particles      pIn,
-                                  Particles      pOut,
-                                  const unsigned N,
-                                  float          dt);
+__global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned N, float dt);
 
 /**
  * CUDA kernel to calculate particles center of mass
@@ -55,10 +51,7 @@ __global__ void calculateVelocity(Particles      pIn,
  * @param lock - pointer to a user-implemented lock
  * @param N    - Number of particles
  */
-__global__ void centerOfMass(Particles      p,
-                             float4*        com,
-                             int*           lock,
-                             const unsigned N);
+__global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned N);
 
 /**
  * CPU implementation of the Center of Mass calculation
