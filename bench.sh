@@ -11,7 +11,7 @@ GEN_BINARY=$(dirname $NBODY_BINARY)/gen
 DT=0.01f
 STEPS=1000
 THREADS_PER_BLOCK=512
-WRITE_INTENSITY=0
+WRITE_INTENSITY=10
 RED_THREADS=4096
 RED_THREADS_PER_BLOCK=128
 
@@ -31,4 +31,5 @@ if [ ! -f $INPUT ]; then
 fi
 
 
-sudo /opt/nvidia/nsight-compute/2024.3.1//ncu --set full --launch-count 1 -o prof-2 -f "$NBODY_BINARY" $N $DT $STEPS $THREADS_PER_BLOCK $WRITE_INTENSITY $RED_THREADS "$RED_THREADS_PER_BLOCK" $INPUT "$OUTPUT"
+# sudo /opt/nvidia/nsight-compute/2024.3.1//ncu --set full --launch-count 1 -o prof-2 -f "$NBODY_BINARY" $N $DT $STEPS $THREADS_PER_BLOCK $WRITE_INTENSITY $RED_THREADS "$RED_THREADS_PER_BLOCK" $INPUT "$OUTPUT"
+ncu --verbose --set full --launch-count 1 -o prof-2 -f "$NBODY_BINARY" $N $DT $STEPS $THREADS_PER_BLOCK $WRITE_INTENSITY $RED_THREADS "$RED_THREADS_PER_BLOCK" $INPUT "$OUTPUT"

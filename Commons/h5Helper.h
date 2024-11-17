@@ -1,10 +1,10 @@
 /**
  * @file      h5Helper.h
  *
- * @author    Name Surname \n
+ * @author    Pavel Kratochvil \n
  *            Faculty of Information Technology \n
  *            Brno University of Technology \n
- *            xlogin00@fit.vutbr.cz
+ *            xkrato61@fit.vutbr.cz
  *
  * @brief     PCG Assignment 1
  *

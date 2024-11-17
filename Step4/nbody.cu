@@ -1,16 +1,16 @@
 /**
  * @file      nbody.cu
  *
- * @author    Name Surname \n
+ * @author    Pavel Kratochvil \n
  *            Faculty of Information Technology \n
  *            Brno University of Technology \n
- *            xlogin00@fit.vutbr.cz
+ *            xkrato61@fit.vutbr.cz
  *
  * @brief     PCG Assignment 1
  *
  * @version   2024
  *
- * @date      04 October   2023, 09:00 (created) \n
+ * @date      10 November  2024 \n
  */
 
 #include <device_launch_parameters.h>
@@ -141,8 +141,8 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
   float sumZ = 0.0f;
   float sumW = 0.0f;
 
-  for (int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x; i < N;
-       i += blockDim.x * 2 * gridDim.x) {
+  for (int i = blockIdx.x * (blockDim.x) + threadIdx.x; i < N;
+       i += blockDim.x * gridDim.x) {
     // first particle
     float mass_ratio = 0.0f;
     if (sumW + p.mass[i] > 0.0f) {
@@ -157,33 +157,16 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
     sumY += dy * mass_ratio;
     sumZ += dz * mass_ratio;
     sumW += p.mass[i];
-
-    // second particle
-    if (i + blockDim.x < N) {
-      float mass_ratio = 0.0f;
-      if (sumW + p.mass[i + blockDim.x] > 0.0f) {
-        mass_ratio = p.mass[i + blockDim.x] / (sumW + p.mass[i + blockDim.x]);
-      }
-
-      float dx = p.position_x[i + blockDim.x] - sumX;
-      float dy = p.position_y[i + blockDim.x] - sumY;
-      float dz = p.position_z[i + blockDim.x] - sumZ;
-
-      sumX += dx * mass_ratio;
-      sumY += dy * mass_ratio;
-      sumZ += dz * mass_ratio;
-      sumW += p.mass[i + blockDim.x];
-    }
   }
 
-  // Store in shared memory
+  // store in shared memory
   sharedData[RED_POS_X + idx] = sumX;
   sharedData[RED_POS_Y + idx] = sumY;
   sharedData[RED_POS_Z + idx] = sumZ;
-  sharedData[RED_MASS + idx] = sumW;
+  sharedData[RED_MASS  + idx] = sumW;
   __syncthreads();
 
-  // Parallel reduction in shared memory
+  // parallel reduction in shared memory
   for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
     if (idx < stride) {
       const float mass1 = sharedData[RED_MASS + idx];
@@ -205,7 +188,7 @@ __global__ void centerOfMass(Particles p, float4* com, int* lock, const unsigned
     __syncthreads();
   }
 
-  // Write results to global memory
+  // write results to global memory
   if (idx == 0) {
     while (atomicCAS(lock, 0, 1) != 0);
     float mass_ratio = 0.0f;

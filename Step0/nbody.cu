@@ -1,16 +1,16 @@
 /**
- * @file      nbody.cu
+ * @file       nbody.cu
  *
- * @author    Name Surname \n
+ * @author    Pavel Kratochvil \n
  *            Faculty of Information Technology \n
  *            Brno University of Technology \n
- *            xlogin00@fit.vutbr.cz
+ *            xkrato61@fit.vutbr.cz
  *
  * @brief     PCG Assignment 1
  *
  * @version   2024
  *
- * @date      04 October   2023, 09:00 (created) \n
+ * @date      10 November  2024 \n
  */
 
 #include <device_launch_parameters.h>
@@ -35,7 +35,7 @@ constexpr float COLLISION_DISTANCE = 0.01f;
 __global__ void calculateGravitationVelocity(Particles p, Velocities tmpVel, const unsigned N,
                                              float dt) {
   /********************************************************************************************************************/
-  /*              TODO: CUDA kernel to calculate gravitation velocity, see reference CPU version */
+  /*              CUDA kernel to calculate gravitation velocity, see reference CPU version */
   /********************************************************************************************************************/
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= N) return;
@@ -43,13 +43,14 @@ __global__ void calculateGravitationVelocity(Particles p, Velocities tmpVel, con
   float newVelY{};
   float newVelZ{};
 
+  // load particle data into registers
   const float posX = p.position_x[idx];
   const float posY = p.position_y[idx];
   const float posZ = p.position_z[idx];
   const float weight = p.mass[idx];
 
+  // loop over all particles
   for (unsigned i = 0; i < N; i++) {
-    if (i == idx) continue;
     const float otherPosX = p.position_x[i];
     const float otherPosY = p.position_y[i];
     const float otherPosZ = p.position_z[i];
@@ -90,11 +91,12 @@ __global__ void calculateGravitationVelocity(Particles p, Velocities tmpVel, con
 __global__ void calculateCollisionVelocity(Particles p, Velocities tmpVel, const unsigned N,
                                            float dt) {
   /********************************************************************************************************************/
-  /*              TODO: CUDA kernel to calculate collision velocity, see reference CPU version */
+  /*              CUDA kernel to calculate collision velocity, see reference CPU version */
   /********************************************************************************************************************/
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= N) return;
 
+  // load particle data into registers
   const float posX = p.position_x[idx];
   const float posY = p.position_y[idx];
   const float posZ = p.position_z[idx];
@@ -107,6 +109,7 @@ __global__ void calculateCollisionVelocity(Particles p, Velocities tmpVel, const
   float newVelY = tmpVel.velocity_y[idx];
   float newVelZ = tmpVel.velocity_z[idx];
 
+  // loop over all particles in the system
   for (unsigned i = 0; i < N; i++) {
     if (i == idx) continue;
     const float otherPosX = p.position_x[i];
@@ -146,7 +149,7 @@ __global__ void calculateCollisionVelocity(Particles p, Velocities tmpVel, const
  */
 __global__ void updateParticles(Particles p, Velocities tmpVel, const unsigned N, float dt) {
   /********************************************************************************************************************/
-  /*             TODO: CUDA kernel to update particles velocities and positions, see reference CPU
+  /*             CUDA kernel to update particles velocities and positions, see reference CPU
    * version            */
   /********************************************************************************************************************/
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;

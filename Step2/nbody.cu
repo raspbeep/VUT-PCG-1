@@ -1,16 +1,16 @@
 /**
- * @file      nbody.cu
+ * @file       nbody.cu
  *
- * @author    Name Surname \n
+ * @author    Pavel Kratochvil \n
  *            Faculty of Information Technology \n
  *            Brno University of Technology \n
- *            xlogin00@fit.vutbr.cz
+ *            xkrato61@fit.vutbr.cz
  *
  * @brief     PCG Assignment 1
  *
  * @version   2024
  *
- * @date      04 October   2023, 09:00 (created) \n
+ * @date      10 November  2024 \n
  */
 
 #include <device_launch_parameters.h>
@@ -42,9 +42,6 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
   extern __shared__ float sharedMem[];
 
   const unsigned globalIdx = blockIdx.x * blockDim.x + threadIdx.x;
-
-  // Early exit if thread is out of bounds
-  // if (globalIdx >= N) return;
 
   float newVelX_grav = 0.0f, newVelY_grav = 0.0f, newVelZ_grav = 0.0f;
   float newVelX_coll = 0.0f, newVelY_coll = 0.0f, newVelZ_coll = 0.0f;

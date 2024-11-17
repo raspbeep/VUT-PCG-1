@@ -1,16 +1,16 @@
 /**
- * @file      nbody.cu
+ * @file       nbody.cu
  *
- * @author    Name Surname \n
+ * @author    Pavel Kratochvil \n
  *            Faculty of Information Technology \n
  *            Brno University of Technology \n
- *            xlogin00@fit.vutbr.cz
+ *            xkrato61@fit.vutbr.cz
  *
  * @brief     PCG Assignment 1
  *
  * @version   2024
  *
- * @date      04 October   2023, 09:00 (created) \n
+ * @date      10 October  2024 \n
  */
 
 #include <device_launch_parameters.h>
@@ -34,9 +34,11 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
   const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= N) return;
 
+  // local variables to store new velocities
   float newVelX_grav = 0.0f, newVelY_grav = 0.0f, newVelZ_grav = 0.0f;
   float newVelX_coll = 0.0f, newVelY_coll = 0.0f, newVelZ_coll = 0.0f;
 
+  // load particle data into registers
   const float posX = pIn.position_x[idx];
   const float posY = pIn.position_y[idx];
   const float posZ = pIn.position_z[idx];
@@ -62,6 +64,7 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
     const float r2 = dx * dx + dy * dy + dz * dz;
     const float r = sqrtf(r2);
 
+    // calculate gravitational and collision forces
     if (r > COLLISION_DISTANCE) {
       const float r3 = r2 * r;
       const float F = G * otherWeight / (r3 + FLT_MIN);
@@ -76,6 +79,7 @@ __global__ void calculateVelocity(Particles pIn, Particles pOut, const unsigned 
     }
   }
 
+  // update position and velocity
   const float updatedVelX = velX + (newVelX_grav * dt) + newVelX_coll;
   const float updatedVelY = velY + (newVelY_grav * dt) + newVelY_coll;
   const float updatedVelZ = velZ + (newVelZ_grav * dt) + newVelZ_coll;
